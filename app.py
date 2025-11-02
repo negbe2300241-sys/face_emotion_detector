@@ -1,5 +1,5 @@
 import streamlit as st
-from transformers import AutoFeatureExtractor, AutoModelForImageClassification
+from transformers import AutoFeatureExtractor, AutoModelForImageClassification  # Fixed import
 from PIL import Image
 import torch
 
@@ -24,7 +24,6 @@ def predict_emotion(image: Image.Image):
         predicted_label = model.config.id2label[predicted_class_idx]
         confidence = probs[0][predicted_class_idx].item()
     return predicted_label, confidence
-
 
 st.title("🧠 Emotion Detector (Pretrained ViT Model)")
 st.write("This app uses a pretrained Vision Transformer model from Hugging Face to detect facial emotions.")
