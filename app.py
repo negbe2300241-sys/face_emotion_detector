@@ -8,7 +8,7 @@ MODEL_NAME = "trpakov/vit-face-expression"
 @st.cache_resource
 def load_model():
     st.write("Loading model...")
-    extractor = AutoFeatureExtractor.from_pretrained(MODEL_NAME)
+    extractor = AutoImageProcessor.from_pretrained(MODEL_NAME)
     model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
     model.eval()
     return extractor, model
