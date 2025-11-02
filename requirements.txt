@@ -1,5 +1,4 @@
-flask
-torch
-transformers
-pillow
 streamlit
+torch
+transformers>=4.37.0
+Pillow
