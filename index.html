@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Face Detector — AI Vision</title>
+
+  <!-- Load Hugging Face Transformers.js -->
+  <script type="module">
+    import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.2.0";
+
+    let detector;
+
+    // Load model
+    window.loadModel = async () => {
+      const status = document.getElementById("status");
+      status.textContent = "Loading model, please wait...";
+      detector = await pipeline("object-detection", "Xenova/face-detection");
+      status.textContent = "Model loaded. Upload an image to detect faces.";
+    };
+
+    // Analyze image
+    window.detectFaces = async (file) => {
+      const status = document.getElementById("status");
+      if (!detector) {
+        status.textContent = "Please wait... model still loading.";
+        return;
+      }
+
+      const img = document.getElementById("preview-img");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      img.src = URL.createObjectURL(file);
+      img.onload = async () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+
+        status.textContent = "Detecting faces...";
+        const results = await detector(img);
+
+        if (results.length > 0) {
+          results.forEach(face => {
+            const box = face.box;
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#ff7ba9";
+            ctx.strokeRect(box.xmin, box.ymin, box.xmax - box.xmin, box.ymax - box.ymin);
+          });
+          status.textContent = `Detected ${results.length} face(s).`;
+        } else {
+          status.textContent = "No faces detected.";
+        }
+      };
+    };
+  </script>
+
+  <!-- Style -->
+  <style>
+    :root {
+      --pink: #ff7ba9;
+      --light-pink: #ffe5f0;
+      --bg: #fff7fb;
+      --text: #222;
+      --muted: #666;
+    }
+    body {
+      margin: 0;
+      font-family: "Poppins", sans-serif;
+      background: linear-gradient(180deg, var(--light-pink), #fff);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      color: var(--pink);
+      margin-bottom: 10px;
+    }
+    p {
+      color: var(--muted);
+    }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 8px 30px rgba(255, 122, 169, 0.15);
+      padding: 30px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+      margin-top: 20px;
+    }
+    .upload-box {
+      border: 2px dashed var(--pink);
+      padding: 25px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: 0.2s;
+      display: block;
+    }
+    .upload-box:hover {
+      background: var(--light-pink);
+    }
+    img, canvas {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+    #status {
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: var(--muted);
+    }
+  </style>
+</head>
+
+<body onload="loadModel()">
+  <h1>💗 Face Detector</h1>
+  <p>Detect faces in photos using an AI-powered vision model.</p>
+
+  <div class="card">
+    <label class="upload-box">
+      <input type="file" accept="image/*" hidden onchange="detectFaces(this.files[0])" />
+      <span>📤 Click to upload an image</span>
+    </label>
+
+    <canvas id="canvas"></canvas>
+    <img id="preview-img" alt="Preview" style="display:none;" />
+
+    <div id="status">Loading model...</div>
+  </div>
+
+  <footer style="margin-top:30px; font-size:0.9em; color:#999;">
+      <p>Made with ❤ by Naomi Egbe ️ </p>
+  </footer>
+</body>
+</html>
