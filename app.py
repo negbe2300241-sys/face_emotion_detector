@@ -1,43 +1,87 @@
 import streamlit as st
-from transformers import ViTForImageClassification, ViTImageProcessor
 from PIL import Image
 import torch
 
-# --- Page setup ---
-st.set_page_config(page_title="Facial Emotion Detector", layout="centered")
+try:
+    from transformers import AutoImageProcessor, AutoModelForImageClassification
 
-st.title("😃 Facial Emotion Detector")
-st.write("Upload an image to detect emotion using ViT transformer model.")
 
-# --- Step 1: Load the model once ---
-@st.cache_resource
+    def load_processor(model_name):
+        return AutoImageProcessor.from_pretrained(model_name)
+except ImportError:
+    from transformers import AutoFeatureExtractor, AutoModelForImageClassification
+
+
+    def load_processor(model_name):
+        return AutoFeatureExtractor.from_pretrained(model_name)
+
+# ✅ Use Auto classes instead of specific ViT classes
+MODEL_NAME = "dima806/facial_emotions_image_detection"
+
+
+@st.cache_resource(show_spinner=False)
 def load_model():
-    model_name = "dima806/facial_emotions_image_detection"
-    model = ViTForImageClassification.from_pretrained(model_name)
-    processor = ViTImageProcessor.from_pretrained(model_name)
-    model.eval()  # important for inference
-    return model, processor
+    try:
+        st.write("⏳ Loading model and processor...")
 
-# Load model once when app starts
-model, processor = load_model()
+        # Use AutoModelForImageClassification instead of ViTForImageClassification
+        processor = load_processor(MODEL_NAME)
+        model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
+        model.eval()
 
-# --- File uploader ---
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+        st.write("✅ Model loaded successfully")
+        return processor, model
+    except Exception as e:
+        st.error(f"❌ Model loading failed: {str(e)}")
+        return None, None
 
-if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if st.button("Detect Emotion"):
-        with st.spinner("Detecting emotion..."):
-            # Process image safely
-            inputs = processor(images=image, return_tensors="pt")
-            with torch.no_grad():  # prevents memory leaks
-                outputs = model(**inputs)
-                logits = outputs.logits
-                predicted_class_idx = torch.argmax(logits, dim=1).item()
-                label = model.config.id2label[predicted_class_idx]
+processor, model = load_model()
 
-        st.success(f"**Detected emotion:** {label}")
 
-st.caption("Model: [dima806/facial_emotions_image_detection](https://huggingface.co/dima806/facial_emotions_image_detection)")
+def predict_emotion(image: Image.Image):
+    if model is None or processor is None:
+        return "Model not loaded", 0.0
+
+    try:
+        inputs = processor(images=image, return_tensors="pt")
+        with torch.no_grad():
+            outputs = model(**inputs)
+            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+            predicted_class_idx = probs.argmax().item()
+            predicted_label = model.config.id2label[predicted_class_idx]
+            confidence = probs[0][predicted_class_idx].item()
+        return predicted_label, confidence
+    except Exception as e:
+        return f"Error: {str(e)}", 0.0
+
+
+st.title("🧠 Lightweight Emotion Detector")
+st.write("This app uses a smaller pretrained model for emotion detection.")
+
+if model is None:
+    st.error("⚠️ Model failed to load. The app may not work properly on free tier.")
+
+uploaded_file = st.file_uploader("📸 Upload an image", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    try:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Uploaded Image", use_container_width=True)
+
+        if st.button("Analyze Emotion"):
+            with st.spinner("Detecting emotion..."):
+                label, conf = predict_emotion(image)
+
+            if "Error" in label:
+                st.error(label)
+            else:
+                st.success(f"**Emotion:** {label}")
+                st.info(f"**Confidence:** {conf * 100:.2f}%")
+    except Exception as e:
+        st.error(f"❌ Error processing image: {str(e)}")
+else:
+    st.write("👆 Please upload a face image to get started.")
+
+st.caption(
+    "Model: [dima806/facial_emotions_image_detection](https://huggingface.co/dima806/facial_emotions_image_detection)")
