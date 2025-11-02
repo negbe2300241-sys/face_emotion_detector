@@ -2,7 +2,6 @@ import streamlit as st
 from PIL import Image
 import torch
 
-# Try both old and new names depending on Transformers version
 try:
     from transformers import AutoImageProcessor, AutoModelForImageClassification
     def load_processor(model_name):
@@ -12,11 +11,12 @@ except ImportError:
     def load_processor(model_name):
         return AutoFeatureExtractor.from_pretrained(model_name)
 
-MODEL_NAME = "trpakov/vit-face-expression"
+# ✅ Smaller model that works on free Render plan
+MODEL_NAME = "dima806/facial_emotions_image_detection"
 
 @st.cache_resource
 def load_model():
-    st.write("⏳ Loading model and processor... please wait.")
+    st.write("⏳ Loading model and processor...")
     processor = load_processor(MODEL_NAME)
     model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
     model.eval()
@@ -34,9 +34,8 @@ def predict_emotion(image: Image.Image):
         confidence = probs[0][predicted_class_idx].item()
     return predicted_label, confidence
 
-
-st.title("🧠 Emotion Detector (ViT Model)")
-st.write("This app uses a pretrained Vision Transformer model to detect facial emotions.")
+st.title("🧠 Lightweight Emotion Detector")
+st.write("This app uses a smaller pretrained model for emotion detection (fits Render free plan).")
 
 uploaded_file = st.file_uploader("📸 Upload an image", type=["jpg", "jpeg", "png"])
 
@@ -52,4 +51,4 @@ if uploaded_file is not None:
 else:
     st.write("👆 Please upload a face image to get started.")
 
-st.caption("Model source: [trpakov/vit-face-expression](https://huggingface.co/trpakov/vit-face-expression)")
+st.caption("Model: [dima806/facial_emotions_image_detection](https://huggingface.co/dima806/facial_emotions_image_detection)")
