@@ -1,25 +1,22 @@
 import streamlit as st
-from transformers import AutoProcessor, AutoModelForImageClassification
+from transformers import AutoFeatureExtractor, AutoModelForImageClassification
 from PIL import Image
 import torch
 
-# Model from Hugging Face
 MODEL_NAME = "trpakov/vit-face-expression"
 
 @st.cache_resource
 def load_model():
     st.write("Loading model...")
-    # Use AutoProcessor instead of AutoImageProcessor
-    processor = AutoProcessor.from_pretrained(MODEL_NAME)
+    extractor = AutoFeatureExtractor.from_pretrained(MODEL_NAME)
     model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
     model.eval()
-    return processor, model
+    return extractor, model
 
-processor, model = load_model()
+extractor, model = load_model()
 
 def predict_emotion(image: Image.Image):
-    # Preprocess image and make prediction
-    inputs = processor(images=image, return_tensors="pt")
+    inputs = extractor(images=image, return_tensors="pt")
     with torch.no_grad():
         outputs = model(**inputs)
         probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
@@ -28,7 +25,7 @@ def predict_emotion(image: Image.Image):
         confidence = probs[0][predicted_class_idx].item()
     return predicted_label, confidence
 
-# Streamlit UI
+
 st.title("🧠 Emotion Detector (Pretrained ViT Model)")
 st.write("This app uses a pretrained Vision Transformer model from Hugging Face to detect facial emotions.")
 
@@ -42,7 +39,7 @@ if uploaded_file is not None:
         with st.spinner("Detecting emotion..."):
             label, conf = predict_emotion(image)
         st.success(f"**Emotion:** {label}")
-        st.info(f"**Confidence:** {conf * 100:.2f}%")
+        st.info(f"**Confidence:** {conf*100:.2f}%")
 else:
     st.write("👆 Upload a face image to start.")
 
