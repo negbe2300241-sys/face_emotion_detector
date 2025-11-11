@@ -1,87 +1,89 @@
-import streamlit as st
-from PIL import Image
-import torch
+from flask import Flask, render_template, request
+import tensorflow as tf
+import numpy as np
+import cv2
+import os
+import sqlite3
+import uuid
+import gc  # For garbage collection
 
-try:
-    from transformers import AutoImageProcessor, AutoModelForImageClassification
+app = Flask(name)
 
+# Ensure uploads folder exists
+UPLOAD_FOLDER = os.path.join('static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-    def load_processor(model_name):
-        return AutoImageProcessor.from_pretrained(model_name)
-except ImportError:
-    from transformers import AutoFeatureExtractor, AutoModelForImageClassification
+# Create / connect to database
+conn = sqlite3.connect('emotions.db', check_same_thread=False)
+cursor = conn.cursor()
 
+# Create table if not exists
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        image_path TEXT,
+        emotion TEXT
+    )
+""")
+conn.commit()
 
-    def load_processor(model_name):
-        return AutoFeatureExtractor.from_pretrained(model_name)
+# Hardcoded emotion labels
+labels = ['Angry','Disgust','Fear','Happy','Sad','Surprise','Neutral']
 
-# ✅ Use Auto classes instead of specific ViT classes
-MODEL_NAME = "dima806/facial_emotions_image_detection"
+@app.route('/')
+def home():
+    return render_template('index.html')
 
-
-@st.cache_resource(show_spinner=False)
-def load_model():
+@app.route('/predict', methods=['POST'])
+def predict():
     try:
-        st.write("⏳ Loading model and processor...")
+        name = request.form['name']
+        image_file = request.files['image']
 
-        # Use AutoModelForImageClassification instead of ViTForImageClassification
-        processor = load_processor(MODEL_NAME)
-        model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
-        model.eval()
+        # --- Clear old uploads ---
+        for filename in os.listdir(UPLOAD_FOLDER):
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
-        st.write("✅ Model loaded successfully")
-        return processor, model
+        # --- Save new image with unique filename ---
+        unique_filename = f"{uuid.uuid4().hex}_{image_file.filename}"
+        image_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+        image_file.save(image_path)
+
+        # --- Read and preprocess image ---
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        img = cv2.resize(img, (48, 48))
+        img = img / 255.0
+        img = np.expand_dims(img, axis=-1)
+        img = np.expand_dims(img, axis=0)
+
+        # --- Load model lazily to reduce memory usage ---
+        model = tf.keras.models.load_model("emotion_model.h5")
+
+        # --- Predict emotion ---
+        predictions = model.predict(img)
+        class_index = np.argmax(predictions)
+        emotion = labels[class_index]
+
+        # --- Save to database ---
+        cursor.execute(
+            "INSERT INTO users (name, image_path, emotion) VALUES (?, ?, ?)",
+            (name, image_path, emotion)
+        )
+        conn.commit()
+
+        # --- Clean up model from memory ---
+        del model
+        gc.collect()
+
+        # --- Render result ---
+        return render_template('index.html', result=emotion, img=image_path)
+
     except Exception as e:
-        st.error(f"❌ Model loading failed: {str(e)}")
-        return None, None
+        # Show error instead of crashing
+        return f"An error occurred: {str(e)}"
 
-
-processor, model = load_model()
-
-
-def predict_emotion(image: Image.Image):
-    if model is None or processor is None:
-        return "Model not loaded", 0.0
-
-    try:
-        inputs = processor(images=image, return_tensors="pt")
-        with torch.no_grad():
-            outputs = model(**inputs)
-            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            predicted_class_idx = probs.argmax().item()
-            predicted_label = model.config.id2label[predicted_class_idx]
-            confidence = probs[0][predicted_class_idx].item()
-        return predicted_label, confidence
-    except Exception as e:
-        return f"Error: {str(e)}", 0.0
-
-
-st.title("🧠 Lightweight Emotion Detector")
-st.write("This app uses a smaller pretrained model for emotion detection.")
-
-if model is None:
-    st.error("⚠️ Model failed to load. The app may not work properly on free tier.")
-
-uploaded_file = st.file_uploader("📸 Upload an image", type=["jpg", "jpeg", "png"])
-
-if uploaded_file is not None:
-    try:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Uploaded Image", use_container_width=True)
-
-        if st.button("Analyze Emotion"):
-            with st.spinner("Detecting emotion..."):
-                label, conf = predict_emotion(image)
-
-            if "Error" in label:
-                st.error(label)
-            else:
-                st.success(f"**Emotion:** {label}")
-                st.info(f"**Confidence:** {conf * 100:.2f}%")
-    except Exception as e:
-        st.error(f"❌ Error processing image: {str(e)}")
-else:
-    st.write("👆 Please upload a face image to get started.")
-
-st.caption(
-    "Model: [dima806/facial_emotions_image_detection](https://huggingface.co/dima806/facial_emotions_image_detection)")
+if name == 'main':
+    app.run(debug=True)
